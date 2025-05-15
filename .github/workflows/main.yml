@@ -1,0 +1,46 @@
+name: Daily Security Pipeline
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+  push:
+    branches: [main]
+
+jobs:
+  DependenciesAnalysis:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install OSV Scanner v2.0.2
+      run: |
+        curl -L -o osv-scanner https://github.com/google/osv-scanner/releases/download/v2.0.2/osv-scanner_linux_amd64
+        chmod +x osv-scanner
+        sudo mv osv-scanner /usr/local/bin/osv-scanner
+
+    - name: Run OSV Scanner
+      run: osv-scanner --format sarif --output osv-scan-results.sarif app/
+      continue-on-error: true
+    - name: Upload OSV SARIF report to Security Dashboard
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ./osv-scan-results.sarif
+
+  SemgrepAnalysis:
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Run Semgrep with Java ruleset
+      run: semgrep --config p/java --sarif --output semgrep-results.sarif
+
+    - name: Upload Semgrep SARIF to Security Dashboard
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: semgrep-results.sarif
